@@ -36,53 +36,58 @@ export default function Navbar() {
   return (
     <nav className="bg-teal-900 text-white shadow-md relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16 items-center">
+        <div className="flex justify-between items-center h-16 gap-2">
 
           {/* Logo / Brand */}
-          <div className="flex items-center space-x-3">
-            <Link to="/dashboard" className="font-bold text-lg tracking-wider" onClick={closeMobileMenu}>
-              Warga <span className="text-amber-400 font-normal">Valres AA6</span>
-            </Link>
-          </div>
+          <Link
+            to="/dashboard"
+            className="font-bold text-base sm:text-lg tracking-wider flex-shrink-0"
+            onClick={closeMobileMenu}
+          >
+            Warga <span className="text-amber-400 font-normal">Valres AA6</span>
+          </Link>
 
-          {/* Navigation Links (Desktop) */}
           {currentUser && (
-            <div className="flex items-center space-x-3 sm:space-x-5">
-              {NAV_LINKS.map((link) => (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  className="text-sm font-medium hover:text-amber-300 transition-colors hidden lg:inline-block"
-                >
-                  {link.label}
-                </Link>
-              ))}
+            <div className="flex items-center gap-2 flex-shrink-0">
 
-              {/* User Info & Logout (Desktop) */}
-              <div className="hidden lg:flex items-center space-x-3 pl-2 border-l border-teal-700">
-                <span className="text-xs bg-teal-800 px-2.5 py-1 rounded-full">
-                  {userData?.name || 'User'} ({roleLabel})
-                </span>
-                <button
-                  onClick={handleLogout}
-                  className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg transition-colors font-medium"
-                >
-                  Keluar
-                </button>
+              {/* Link navigasi: hanya tampil di layar lebar (lg ke atas) */}
+              <div className="hidden lg:flex items-center space-x-5 mr-3">
+                {NAV_LINKS.map((link) => (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    className="text-sm font-medium hover:text-amber-300 transition-colors whitespace-nowrap"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
               </div>
 
-              {/* Hamburger Button (Mobile) */}
+              {/* Badge nama & role: disembunyikan di layar sangat sempit agar tidak mendesak tombol lain */}
+              <span className="hidden md:inline-block text-xs bg-teal-800 px-2.5 py-1 rounded-full whitespace-nowrap">
+                {userData?.name || 'User'} ({roleLabel})
+              </span>
+
+              {/* Tombol Keluar: SELALU tampil di semua ukuran layar, tidak pernah disembunyikan */}
+              <button
+                onClick={handleLogout}
+                className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg transition-colors font-medium whitespace-nowrap flex-shrink-0"
+              >
+                Keluar
+              </button>
+
+              {/* Tombol Hamburger: hanya tampil di bawah lg, untuk membuka link navigasi */}
               <button
                 onClick={() => setMobileOpen((v) => !v)}
-                className="lg:hidden p-2 -mr-2 rounded-lg hover:bg-teal-800 transition-colors"
+                className="lg:hidden p-2 -mr-1 rounded-lg hover:bg-teal-800 transition-colors flex-shrink-0"
                 aria-label="Buka menu navigasi"
               >
                 {mobileOpen ? (
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 ) : (
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                   </svg>
                 )}
@@ -93,10 +98,13 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Mobile Dropdown Menu */}
+      {/* Mobile Dropdown Menu: hanya berisi link navigasi (Keluar sudah selalu tampil di atas) */}
       {currentUser && mobileOpen && (
         <div className="lg:hidden bg-teal-900 border-t border-teal-800 shadow-lg">
           <div className="px-4 py-3 space-y-1">
+            <div className="md:hidden text-xs text-teal-300 px-3 pb-2">
+              {userData?.name || 'User'} &middot; {roleLabel}
+            </div>
             {NAV_LINKS.map((link) => (
               <Link
                 key={link.to}
@@ -107,21 +115,6 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
-
-            <div className="pt-3 mt-2 border-t border-teal-800 flex items-center justify-between">
-              <span className="text-xs bg-teal-800 px-2.5 py-1 rounded-full">
-                {userData?.name || 'User'} ({roleLabel})
-              </span>
-              <button
-                onClick={() => {
-                  closeMobileMenu();
-                  handleLogout();
-                }}
-                className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg transition-colors font-medium"
-              >
-                Keluar
-              </button>
-            </div>
           </div>
         </div>
       )}
