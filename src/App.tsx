@@ -10,6 +10,7 @@ import DashboardPage from './pages/DashboardPage';
 import KasPage from './pages/KasPage';
 import DatabaseRumahPage from './pages/DatabaseRumahPage';
 import InfoPentingPage from './pages/InfoPentingPage';
+import MigrationPage from './pages/MigrationPage';
 
 // Komponen Proteksi Halaman (Harus Login)
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="/kas" element={<ProtectedRoute><KasPage /></ProtectedRoute>} />
           <Route path="/database" element={<ProtectedRoute><DatabaseRumahPage /></ProtectedRoute>} />
           <Route path="/info-penting" element={<ProtectedRoute><InfoPentingPage /></ProtectedRoute>} />
+          <Route path="/admin/migrate" element={<ProtectedRoute><MigrationPage /></ProtectedRoute>} />
           
           {/* Fallback jika URL tidak ditemukan */}
           <Route path="*" element={<Navigate to="/" replace />} />
