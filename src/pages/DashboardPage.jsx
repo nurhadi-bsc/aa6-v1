@@ -11,6 +11,8 @@ export default function DashboardPage() {
   const { userData } = useAuth();
   const [filledHouses, setFilledHouses] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
+  const [saldoIPL, setSaldoIPL] = useState(0);
+  const [saldoKas, setSaldoKas] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const role = userData?.role || 'user';
@@ -24,9 +26,22 @@ export default function DashboardPage() {
         setFilledHouses(housesSnap.size);
 
         if (isPengurus) {
-          const q = query(collection(db, 'house_requests'), where('status', '==', 'pending'));
-          const reqSnap = await getDocs(q);
+          const [reqSnap, transSnap] = await Promise.all([
+            getDocs(query(collection(db, 'house_requests'), where('status', '==', 'pending'))),
+            getDocs(collection(db, 'transactions')),
+          ]);
           setPendingCount(reqSnap.size);
+
+          let ipl = 0;
+          let kas = 0;
+          transSnap.docs.forEach((d) => {
+            const t = d.data();
+            const delta = t.type === 'pemasukan' ? (t.amount || 0) : -(t.amount || 0);
+            if (t.category === 'IPL') ipl += delta;
+            if (t.category === 'Kas') kas += delta;
+          });
+          setSaldoIPL(ipl);
+          setSaldoKas(kas);
         }
       } catch (err) {
         console.error('Gagal mengambil data ringkasan:', err);
@@ -36,6 +51,14 @@ export default function DashboardPage() {
     }
     fetchCounts();
   }, []);
+
+  function formatRupiah(amount) {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      maximumFractionDigits: 0,
+    }).format(amount || 0);
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -65,8 +88,16 @@ export default function DashboardPage() {
               label="Rumah Terdata"
               value={loading ? '...' : `${filledHouses}/${TOTAL_HOUSES}`}
             />
-            <StatCard label="Saldo Kas IPL" value="—" hint="Belum terhubung" />
-            <StatCard label="Saldo Kas Lingkungan" value="—" hint="Belum terhubung" />
+            <StatCard
+              label="Saldo Kas IPL"
+              value={loading ? '...' : formatRupiah(saldoIPL)}
+              to="/kas"
+            />
+            <StatCard
+              label="Saldo Kas Lingkungan"
+              value={loading ? '...' : formatRupiah(saldoKas)}
+              to="/kas"
+            />
             <StatCard label="Rumah Belum Terdata" value={loading ? '...' : TOTAL_HOUSES - filledHouses} />
           </div>
         )}
@@ -137,14 +168,24 @@ export default function DashboardPage() {
   );
 }
 
-function StatCard({ label, value, hint }) {
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+function StatCard({ label, value, hint, to }) {
+  const content = (
+    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm h-full">
       <p className="text-xs text-slate-500">{label}</p>
       <p className="text-2xl font-bold text-slate-900 mt-1">{value}</p>
       {hint && <p className="text-[10px] text-slate-400 mt-0.5">{hint}</p>}
     </div>
   );
+
+  if (to) {
+    return (
+      <Link to={to} className="block hover:shadow-md transition-shadow rounded-xl">
+        {content}
+      </Link>
+    );
+  }
+
+  return content;
 }
 
 function MenuCard({ to, title, desc, badge, tone = 'teal' }) {
