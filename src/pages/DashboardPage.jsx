@@ -22,26 +22,28 @@ export default function DashboardPage() {
   useEffect(() => {
     async function fetchCounts() {
       try {
-        const housesSnap = await getDocs(collection(db, 'houses'));
+        const [housesSnap, transSnap] = await Promise.all([
+          getDocs(collection(db, 'houses')),
+          getDocs(collection(db, 'transactions')),
+        ]);
         setFilledHouses(housesSnap.size);
 
-        if (isPengurus) {
-          const [reqSnap, transSnap] = await Promise.all([
-            getDocs(query(collection(db, 'house_requests'), where('status', '==', 'pending'))),
-            getDocs(collection(db, 'transactions')),
-          ]);
-          setPendingCount(reqSnap.size);
+        let ipl = 0;
+        let kas = 0;
+        transSnap.docs.forEach((d) => {
+          const t = d.data();
+          const delta = t.type === 'pemasukan' ? (t.amount || 0) : -(t.amount || 0);
+          if (t.category === 'IPL') ipl += delta;
+          if (t.category === 'Kas') kas += delta;
+        });
+        setSaldoIPL(ipl);
+        setSaldoKas(kas);
 
-          let ipl = 0;
-          let kas = 0;
-          transSnap.docs.forEach((d) => {
-            const t = d.data();
-            const delta = t.type === 'pemasukan' ? (t.amount || 0) : -(t.amount || 0);
-            if (t.category === 'IPL') ipl += delta;
-            if (t.category === 'Kas') kas += delta;
-          });
-          setSaldoIPL(ipl);
-          setSaldoKas(kas);
+        if (isPengurus) {
+          const reqSnap = await getDocs(
+            query(collection(db, 'house_requests'), where('status', '==', 'pending'))
+          );
+          setPendingCount(reqSnap.size);
         }
       } catch (err) {
         console.error('Gagal mengambil data ringkasan:', err);
@@ -81,26 +83,26 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Statistik Ringkas — hanya Pengurus ke atas */}
-        {isPengurus && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <StatCard
-              label="Rumah Terdata"
-              value={loading ? '...' : `${filledHouses}/${TOTAL_HOUSES}`}
-            />
-            <StatCard
-              label="Saldo Kas IPL"
-              value={loading ? '...' : formatRupiah(saldoIPL)}
-              to="/kas"
-            />
-            <StatCard
-              label="Saldo Kas Lingkungan"
-              value={loading ? '...' : formatRupiah(saldoKas)}
-              to="/kas"
-            />
+        {/* Statistik Ringkas — semua warga */}
+        <div className={`grid grid-cols-2 gap-4 ${isPengurus ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
+          <StatCard
+            label="Rumah Terdata"
+            value={loading ? '...' : `${filledHouses}/${TOTAL_HOUSES}`}
+          />
+          <StatCard
+            label="Saldo Kas IPL"
+            value={loading ? '...' : formatRupiah(saldoIPL)}
+            to="/kas"
+          />
+          <StatCard
+            label="Saldo Kas Lingkungan"
+            value={loading ? '...' : formatRupiah(saldoKas)}
+            to="/kas"
+          />
+          {isPengurus && (
             <StatCard label="Rumah Belum Terdata" value={loading ? '...' : TOTAL_HOUSES - filledHouses} />
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Menu Utama — semua warga */}
         <section>
