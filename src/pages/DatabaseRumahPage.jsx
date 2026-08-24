@@ -6,9 +6,12 @@ import {
   getDoc,
   getDocs,
   setDoc,
+  updateDoc,
+  addDoc,
   arrayUnion,
   orderBy,
   query,
+  where,
 } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import Navbar from '../components/layout/Navbar';
@@ -44,7 +47,7 @@ export default function DatabaseRumahPage() {
   const role = userData?.role || 'user';
   const isPengurus = role === 'admin' || role === 'super_admin';
 
-  const [view, setView] = useState('list'); // 'list' | 'form'
+  const [view, setView] = useState('list'); // 'list' | 'form' | 'requests'
   const [houses, setHouses] = useState({}); // { [houseNumber]: data }
   const [loadingList, setLoadingList] = useState(true);
   const [search, setSearch] = useState('');
@@ -55,6 +58,10 @@ export default function DatabaseRumahPage() {
   const [loadingForm, setLoadingForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [loadingRequests, setLoadingRequests] = useState(true);
+  const [processingId, setProcessingId] = useState(null);
+
   const houseNumberOptions = useMemo(
     () => Array.from({ length: TOTAL_HOUSES }, (_, i) => i + 1),
     []
@@ -62,6 +69,7 @@ export default function DatabaseRumahPage() {
 
   useEffect(() => {
     fetchAllHouses();
+    if (isPengurus) fetchPendingRequests();
   }, []);
 
   async function fetchAllHouses() {
@@ -78,6 +86,23 @@ export default function DatabaseRumahPage() {
       console.error('Gagal memuat data rumah:', err);
     } finally {
       setLoadingList(false);
+    }
+  }
+
+  async function fetchPendingRequests() {
+    setLoadingRequests(true);
+    try {
+      const q = query(
+        collection(db, 'house_requests'),
+        where('status', '==', 'pending'),
+        orderBy('requestedAt', 'asc')
+      );
+      const snap = await getDocs(q);
+      setPendingRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      console.error('Gagal memuat permintaan konfirmasi:', err);
+    } finally {
+      setLoadingRequests(false);
     }
   }
 
@@ -131,6 +156,18 @@ export default function DatabaseRumahPage() {
     return null;
   }
 
+  function buildFieldPayload() {
+    return {
+      residentName: form.residentName.trim(),
+      residentStatus: form.residentStatus,
+      residentPhone: form.residentPhone.trim(),
+      ownerName: requiresOwnerInfo ? form.ownerName.trim() : '',
+      ownerPhone: requiresOwnerInfo ? form.ownerPhone.trim() : '',
+      emergencyName: form.emergencyName.trim(),
+      emergencyPhone: form.emergencyPhone.trim(),
+    };
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     const error = validate();
@@ -141,32 +178,47 @@ export default function DatabaseRumahPage() {
 
     setSaving(true);
     try {
-      const ref = doc(db, 'houses', String(selectedNumber));
+      const fields = buildFieldPayload();
       const isNew = existingHistory.length === 0;
 
-      const historyEntry = {
-        date: new Date().toISOString(),
-        note: form.changeNote.trim() || (isNew ? 'Data awal didaftarkan.' : 'Pembaruan data.'),
-        updatedBy: userData?.name || 'Tidak diketahui',
-      };
+      if (isPengurus) {
+        // Pengurus & Super Admin: perubahan langsung berlaku, tanpa perlu konfirmasi.
+        const ref = doc(db, 'houses', String(selectedNumber));
+        const historyEntry = {
+          date: new Date().toISOString(),
+          note: form.changeNote.trim() || (isNew ? 'Data awal didaftarkan.' : 'Pembaruan data oleh pengurus.'),
+          updatedBy: userData?.name || 'Tidak diketahui',
+        };
 
-      const payload = {
-        houseNumber: selectedNumber,
-        residentName: form.residentName.trim(),
-        residentStatus: form.residentStatus,
-        residentPhone: form.residentPhone.trim(),
-        ownerName: requiresOwnerInfo ? form.ownerName.trim() : '',
-        ownerPhone: requiresOwnerInfo ? form.ownerPhone.trim() : '',
-        emergencyName: form.emergencyName.trim(),
-        emergencyPhone: form.emergencyPhone.trim(),
-        updatedAt: new Date().toISOString(),
-        updatedBy: userData?.name || 'Tidak diketahui',
-        history: arrayUnion(historyEntry),
-      };
+        await setDoc(
+          ref,
+          {
+            houseNumber: selectedNumber,
+            ...fields,
+            updatedAt: new Date().toISOString(),
+            updatedBy: userData?.name || 'Tidak diketahui',
+            history: arrayUnion(historyEntry),
+          },
+          { merge: true }
+        );
 
-      await setDoc(ref, payload, { merge: true });
+        alert('Data rumah berhasil disimpan.');
+      } else {
+        // Warga: perubahan dikirim sebagai permintaan, menunggu konfirmasi pengurus.
+        await addDoc(collection(db, 'house_requests'), {
+          houseNumber: selectedNumber,
+          requestedData: fields,
+          changeNote: form.changeNote.trim(),
+          isNewEntry: isNew,
+          requestedBy: userData?.name || 'Tidak diketahui',
+          requestedByUid: userData?.uid || null,
+          requestedAt: new Date().toISOString(),
+          status: 'pending',
+        });
 
-      alert('Data rumah berhasil disimpan.');
+        alert('Perubahan berhasil dikirim dan menunggu konfirmasi dari admin/pengurus.');
+      }
+
       setView('list');
       fetchAllHouses();
     } catch (err) {
@@ -174,6 +226,68 @@ export default function DatabaseRumahPage() {
       alert('Gagal menyimpan data. Silakan coba kembali.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleApprove(request) {
+    setProcessingId(request.id);
+    try {
+      const ref = doc(db, 'houses', String(request.houseNumber));
+      const historyEntry = {
+        date: new Date().toISOString(),
+        note:
+          request.changeNote ||
+          (request.isNewEntry ? 'Data awal didaftarkan oleh warga.' : 'Pembaruan data oleh warga.'),
+        updatedBy: request.requestedBy,
+      };
+
+      await setDoc(
+        ref,
+        {
+          houseNumber: request.houseNumber,
+          ...request.requestedData,
+          updatedAt: new Date().toISOString(),
+          updatedBy: request.requestedBy,
+          history: arrayUnion(historyEntry),
+        },
+        { merge: true }
+      );
+
+      await updateDoc(doc(db, 'house_requests', request.id), {
+        status: 'approved',
+        reviewedBy: userData?.name || 'Tidak diketahui',
+        reviewedAt: new Date().toISOString(),
+      });
+
+      setPendingRequests((prev) => prev.filter((r) => r.id !== request.id));
+      fetchAllHouses();
+    } catch (err) {
+      console.error('Gagal mengkonfirmasi permintaan:', err);
+      alert('Gagal mengkonfirmasi permintaan. Silakan coba kembali.');
+    } finally {
+      setProcessingId(null);
+    }
+  }
+
+  async function handleReject(request) {
+    const confirmed = window.confirm(
+      `Tolak permintaan perubahan data Rumah No. ${request.houseNumber} dari ${request.requestedBy}?`
+    );
+    if (!confirmed) return;
+
+    setProcessingId(request.id);
+    try {
+      await updateDoc(doc(db, 'house_requests', request.id), {
+        status: 'rejected',
+        reviewedBy: userData?.name || 'Tidak diketahui',
+        reviewedAt: new Date().toISOString(),
+      });
+      setPendingRequests((prev) => prev.filter((r) => r.id !== request.id));
+    } catch (err) {
+      console.error('Gagal menolak permintaan:', err);
+      alert('Gagal menolak permintaan. Silakan coba kembali.');
+    } finally {
+      setProcessingId(null);
     }
   }
 
@@ -203,7 +317,7 @@ export default function DatabaseRumahPage() {
             </p>
           </div>
 
-          <div className="inline-flex bg-slate-200 rounded-lg p-1 self-start">
+          <div className="inline-flex bg-slate-200 rounded-lg p-1 self-start flex-wrap">
             <button
               onClick={() => setView('list')}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -220,6 +334,21 @@ export default function DatabaseRumahPage() {
             >
               Isi / Perbarui Data
             </button>
+            {isPengurus && (
+              <button
+                onClick={() => setView('requests')}
+                className={`relative px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  view === 'requests' ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-600'
+                }`}
+              >
+                Permintaan Konfirmasi
+                {pendingRequests.length > 0 && (
+                  <span className="ml-1.5 inline-flex items-center justify-center text-[10px] font-bold bg-red-500 text-white rounded-full w-4 h-4">
+                    {pendingRequests.length}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -295,6 +424,12 @@ export default function DatabaseRumahPage() {
         {/* ================= FORM VIEW ================= */}
         {view === 'form' && (
           <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 space-y-5">
+
+            {!isPengurus && (
+              <div className="bg-teal-50 border border-teal-200 text-teal-800 text-xs px-4 py-2.5 rounded-lg">
+                Perubahan yang Anda kirimkan akan ditinjau terlebih dahulu oleh admin/pengurus sebelum berlaku secara resmi.
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -478,7 +613,11 @@ export default function DatabaseRumahPage() {
                     disabled={saving}
                     className="bg-teal-800 hover:bg-teal-900 text-white font-medium py-2.5 px-6 rounded-lg shadow transition-colors text-sm disabled:opacity-50"
                   >
-                    {saving ? 'Menyimpan...' : 'Simpan Data'}
+                    {saving
+                      ? 'Menyimpan...'
+                      : isPengurus
+                      ? 'Simpan Data'
+                      : 'Simpan Data & Kirim Konfirmasi ke Admin'}
                   </button>
                   <button
                     type="button"
@@ -491,6 +630,80 @@ export default function DatabaseRumahPage() {
               </>
             )}
           </form>
+        )}
+
+        {/* ================= REQUESTS VIEW (khusus Pengurus) ================= */}
+        {view === 'requests' && isPengurus && (
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h2 className="font-semibold text-slate-900 text-sm">Permintaan Konfirmasi dari Warga</h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Perubahan berikut menunggu peninjauan sebelum berlaku secara resmi.
+              </p>
+            </div>
+
+            {loadingRequests ? (
+              <p className="px-6 py-10 text-sm text-slate-400 text-center">Memuat permintaan...</p>
+            ) : pendingRequests.length === 0 ? (
+              <p className="px-6 py-10 text-sm text-slate-400 text-center">
+                Tidak ada permintaan konfirmasi yang menunggu saat ini.
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {pendingRequests.map((r) => (
+                  <li key={r.id} className="px-4 sm:px-6 py-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          Rumah No. {r.houseNumber}
+                          {r.isNewEntry && (
+                            <span className="ml-2 text-[10px] font-medium bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                              Data Baru
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Diajukan oleh {r.requestedBy} • {formatDate(r.requestedAt)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs bg-slate-50 border border-slate-100 rounded-lg p-3">
+                      <p><span className="text-slate-400">Nama Penghuni:</span> {r.requestedData.residentName}</p>
+                      <p><span className="text-slate-400">Status:</span> {r.requestedData.residentStatus}</p>
+                      <p><span className="text-slate-400">HP Penghuni:</span> {r.requestedData.residentPhone}</p>
+                      {r.requestedData.ownerName && (
+                        <p><span className="text-slate-400">Pemilik Rumah:</span> {r.requestedData.ownerName} ({r.requestedData.ownerPhone})</p>
+                      )}
+                      <p><span className="text-slate-400">Kontak Darurat:</span> {r.requestedData.emergencyName} ({r.requestedData.emergencyPhone})</p>
+                      {r.changeNote && (
+                        <p className="sm:col-span-2 pt-1 border-t border-slate-200 mt-1">
+                          <span className="text-slate-400">Catatan:</span> {r.changeNote}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleApprove(r)}
+                        disabled={processingId === r.id}
+                        className="text-xs font-medium bg-teal-800 hover:bg-teal-900 text-white px-4 py-1.5 rounded-lg disabled:opacity-50"
+                      >
+                        {processingId === r.id ? '...' : 'Konfirmasi'}
+                      </button>
+                      <button
+                        onClick={() => handleReject(r)}
+                        disabled={processingId === r.id}
+                        className="text-xs font-medium bg-red-50 hover:bg-red-100 text-red-600 px-4 py-1.5 rounded-lg disabled:opacity-50"
+                      >
+                        Tolak
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
 
       </main>
