@@ -14,7 +14,7 @@ import { db } from '../services/firebase';
 import Navbar from '../components/layout/Navbar';
 
 const TOTAL_HOUSES = 105;
-const STATUS_OPTIONS = ['Pemilik Rumah', 'Kontrak', 'Sewa'];
+const STATUS_OPTIONS = ['Pemilik Rumah', 'Kontrak/Sewa'];
 
 function formatDate(ts) {
   if (!ts) return '-';
