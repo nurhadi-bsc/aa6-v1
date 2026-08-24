@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../services/firebase';
 
 export default function RegisterPage() {
   const [name, setName] = useState('');
@@ -8,9 +10,10 @@ export default function RegisterPage() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  
+
   const { register } = useAuth();
   const navigate = useNavigate();
 
@@ -24,8 +27,26 @@ export default function RegisterPage() {
     try {
       setError('');
       setLoading(true);
+
+      // Verifikasi Kode Akses Warga sebelum membuat akun.
+      const codeRef = doc(db, 'public_config', 'registration');
+      const codeSnap = await getDoc(codeRef);
+      const validCode = codeSnap.exists() ? codeSnap.data().code : null;
+
+      if (!validCode) {
+        setError('Pendaftaran sedang tidak tersedia. Silakan hubungi pengurus lingkungan.');
+        setLoading(false);
+        return;
+      }
+
+      if (accessCode.trim() !== validCode) {
+        setError('Kode Akses Warga tidak sesuai. Dapatkan kode dari pengurus/grup WhatsApp warga resmi.');
+        setLoading(false);
+        return;
+      }
+
       await register(email, password, name, phone);
-      navigate('/dashboard'); // Pindah ke dashboard setelah sukses mendaftar
+      navigate('/pending-approval');
     } catch (err) {
       setError('Gagal mendaftarkan akun. Email mungkin sudah terdaftar.');
       console.error(err);
@@ -37,11 +58,11 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-12">
       <div className="max-w-md w-full bg-white rounded-xl shadow-sm border border-slate-200 p-8 space-y-6">
-        
+
         {/* Header */}
         <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold text-slate-900">Daftar Akun Baru</h1>
-          <p className="text-sm text-slate-600">VALRES AA6 App v1</p>
+          <p className="text-sm text-slate-600">SIWARA — Valencia Residence AA6</p>
         </div>
 
         {/* Error Alert */}
@@ -110,6 +131,24 @@ export default function RegisterPage() {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-800 text-sm"
               placeholder="••••••••"
             />
+          </div>
+
+          <div className="border-t border-slate-100 pt-4">
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Kode Akses Warga *
+            </label>
+            <input
+              type="text"
+              required
+              value={accessCode}
+              onChange={(e) => setAccessCode(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-800 text-sm"
+              placeholder="Masukkan kode dari pengurus"
+            />
+            <p className="text-[11px] text-slate-400 mt-1">
+              Kode ini dibagikan oleh pengurus lingkungan melalui grup WhatsApp warga resmi. Setelah
+              mendaftar, akun Anda tetap memerlukan persetujuan pengurus sebelum dapat digunakan.
+            </p>
           </div>
 
           <button
