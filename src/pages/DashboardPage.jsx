@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import Navbar from '../components/layout/Navbar';
 
@@ -10,6 +10,7 @@ const TOTAL_HOUSES = 105;
 export default function DashboardPage() {
   const { userData } = useAuth();
   const [filledHouses, setFilledHouses] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const role = userData?.role || 'user';
@@ -21,6 +22,12 @@ export default function DashboardPage() {
       try {
         const housesSnap = await getDocs(collection(db, 'houses'));
         setFilledHouses(housesSnap.size);
+
+        if (isPengurus) {
+          const q = query(collection(db, 'house_requests'), where('status', '==', 'pending'));
+          const reqSnap = await getDocs(q);
+          setPendingCount(reqSnap.size);
+        }
       } catch (err) {
         console.error('Gagal mengambil data ringkasan:', err);
       } finally {
@@ -100,6 +107,7 @@ export default function DashboardPage() {
                 to="/database"
                 title="Kelola Data Rumah & Warga"
                 desc="Tinjau, perbarui, atau lengkapi data seluruh rumah."
+                badge={pendingCount > 0 ? `${pendingCount} menunggu konfirmasi` : undefined}
                 tone="amber"
               />
 
