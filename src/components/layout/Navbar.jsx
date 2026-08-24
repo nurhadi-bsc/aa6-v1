@@ -52,14 +52,14 @@ export default function Navbar() {
                 <Link
                   key={link.to}
                   to={link.to}
-                  className="text-sm font-medium hover:text-amber-300 transition-colors hidden sm:inline-block"
+                  className="text-sm font-medium hover:text-amber-300 transition-colors hidden lg:inline-block"
                 >
                   {link.label}
                 </Link>
               ))}
 
               {/* User Info & Logout (Desktop) */}
-              <div className="hidden sm:flex items-center space-x-3 pl-2 border-l border-teal-700">
+              <div className="hidden lg:flex items-center space-x-3 pl-2 border-l border-teal-700">
                 <span className="text-xs bg-teal-800 px-2.5 py-1 rounded-full">
                   {userData?.name || 'User'} ({roleLabel})
                 </span>
@@ -74,7 +74,7 @@ export default function Navbar() {
               {/* Hamburger Button (Mobile) */}
               <button
                 onClick={() => setMobileOpen((v) => !v)}
-                className="sm:hidden p-2 -mr-2 rounded-lg hover:bg-teal-800 transition-colors"
+                className="lg:hidden p-2 -mr-2 rounded-lg hover:bg-teal-800 transition-colors"
                 aria-label="Buka menu navigasi"
               >
                 {mobileOpen ? (
@@ -95,7 +95,7 @@ export default function Navbar() {
 
       {/* Mobile Dropdown Menu */}
       {currentUser && mobileOpen && (
-        <div className="sm:hidden bg-teal-900 border-t border-teal-800 shadow-lg">
+        <div className="lg:hidden bg-teal-900 border-t border-teal-800 shadow-lg">
           <div className="px-4 py-3 space-y-1">
             {NAV_LINKS.map((link) => (
               <Link
