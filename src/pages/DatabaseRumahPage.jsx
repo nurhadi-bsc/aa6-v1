@@ -18,14 +18,15 @@ import { db } from '../services/firebase';
 import Navbar from '../components/layout/Navbar';
 
 const TOTAL_HOUSES = 105;
-const STATUS_OPTIONS = ['Pemilik Rumah', 'Kontrak/Sewa'];
+const STATUS_OPTIONS = ['Pemilik Rumah', 'Kontrak/Sewa', 'Kosong (Tidak Dihuni)'];
 
 // Field yang tergolong PUBLIK (Tier 1) — boleh dilihat semua warga.
-const PUBLIC_FIELDS = ['residentName'];
+// residentStatus disertakan agar status "Kosong (Tidak Dihuni)" transparan untuk semua warga
+// (sudah disepakati bersama warga, bukan disembunyikan seperti data kontak lainnya).
+const PUBLIC_FIELDS = ['residentName', 'residentStatus'];
 
 // Field yang tergolong data KONTAK (Tier 2) — hanya Pengurus/Super Admin.
 const DETAIL_FIELDS = [
-  'residentStatus',
   'residentPhone',
   'ownerName',
   'ownerPhone',
@@ -218,14 +219,17 @@ export default function DatabaseRumahPage() {
   }
 
   const requiresOwnerInfo = form.residentStatus !== 'Pemilik Rumah';
+  const isEmptyStatus = form.residentStatus === 'Kosong (Tidak Dihuni)';
 
   function validate() {
     if (!selectedNumber) return 'Nomor rumah wajib dipilih.';
-    if (!form.residentName.trim()) return 'Nama penghuni wajib diisi.';
-    if (!form.residentPhone.trim()) return 'Nomor HP penghuni wajib diisi.';
+    if (!isEmptyStatus) {
+      if (!form.residentName.trim()) return 'Nama penghuni wajib diisi.';
+      if (!form.residentPhone.trim()) return 'Nomor HP penghuni wajib diisi.';
+    }
     if (requiresOwnerInfo) {
-      if (!form.ownerName.trim()) return 'Nama pemilik rumah wajib diisi untuk status kontrak/sewa.';
-      if (!form.ownerPhone.trim()) return 'Nomor HP pemilik rumah wajib diisi untuk status kontrak/sewa.';
+      if (!form.ownerName.trim()) return 'Nama pemilik rumah wajib diisi untuk status kontrak/sewa atau rumah kosong.';
+      if (!form.ownerPhone.trim()) return 'Nomor HP pemilik rumah wajib diisi untuk status kontrak/sewa atau rumah kosong.';
     }
     if (!form.emergencyName.trim()) return 'Nama kontak darurat wajib diisi.';
     if (!form.emergencyPhone.trim()) return 'Nomor HP kontak darurat wajib diisi.';
@@ -234,9 +238,9 @@ export default function DatabaseRumahPage() {
 
   function buildFieldPayload() {
     return {
-      residentName: form.residentName.trim(),
+      residentName: isEmptyStatus ? '' : form.residentName.trim(),
       residentStatus: form.residentStatus,
-      residentPhone: form.residentPhone.trim(),
+      residentPhone: isEmptyStatus ? '' : form.residentPhone.trim(),
       ownerName: requiresOwnerInfo ? form.ownerName.trim() : '',
       ownerPhone: requiresOwnerInfo ? form.ownerPhone.trim() : '',
       emergencyName: form.emergencyName.trim(),
@@ -539,11 +543,17 @@ export default function DatabaseRumahPage() {
                           </div>
                           <div className="min-w-0">
                             <p className="text-sm font-semibold text-slate-900 truncate">
-                              {h?.residentName || <span className="text-slate-400 font-normal italic">Belum ada data</span>}
+                              {!h ? (
+                                <span className="text-slate-400 font-normal italic">Belum ada data</span>
+                              ) : h.residentStatus === 'Kosong (Tidak Dihuni)' ? (
+                                <span className="text-amber-700">Kosong (Tidak Dihuni)</span>
+                              ) : (
+                                h.residentName
+                              )}
                             </p>
                             {isPengurus && h && (
                               <p className="text-[11px] text-slate-400 mt-0.5">
-                                {h.residentStatus} • {h.residentPhone}
+                                {h.residentStatus}{h.residentPhone && ` • ${h.residentPhone}`}
                                 {h.updatedAt && ` • Diperbarui ${formatDate(h.updatedAt)}`}
                               </p>
                             )}
@@ -637,20 +647,6 @@ export default function DatabaseRumahPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Nama Penghuni <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={form.residentName}
-                      onChange={(e) => updateField('residentName', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-800 text-sm"
-                      placeholder="Nama lengkap penghuni"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
                       Status Penghunian <span className="text-red-500">*</span>
                     </label>
                     <select
@@ -665,25 +661,50 @@ export default function DatabaseRumahPage() {
                     </select>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Nomor HP Penghuni <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={form.residentPhone}
-                      onChange={(e) => updateField('residentPhone', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-800 text-sm"
-                      placeholder="+62812xxxxxxxx"
-                    />
-                  </div>
+                  {!isEmptyStatus && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Nama Penghuni <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required={!isEmptyStatus}
+                          value={form.residentName}
+                          onChange={(e) => updateField('residentName', e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-800 text-sm"
+                          placeholder="Nama lengkap penghuni"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Nomor HP Penghuni <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required={!isEmptyStatus}
+                          value={form.residentPhone}
+                          onChange={(e) => updateField('residentPhone', e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-800 text-sm"
+                          placeholder="+62812xxxxxxxx"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
+
+                {isEmptyStatus && (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs px-4 py-2.5 rounded-lg">
+                    Rumah berstatus kosong (tidak dihuni). Data pemilik di bawah ini akan menjadi kontak
+                    utama untuk rumah ini.
+                  </div>
+                )}
 
                 {requiresOwnerInfo && (
                   <div className="border-t border-slate-100 pt-4 space-y-4">
                     <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
-                      Data Pemilik Rumah (wajib untuk status kontrak/sewa)
+                      Data Pemilik Rumah (wajib untuk status kontrak/sewa atau rumah kosong)
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
