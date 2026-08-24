@@ -8,6 +8,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import KasPage from './pages/KasPage';
+import DatabaseRumahPage from './pages/DatabaseRumahPage';
 
 // Komponen Proteksi Halaman (Harus Login)
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -40,6 +41,7 @@ export default function App() {
           {/* Protected Routes (Harus Login) */}
           <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           <Route path="/kas" element={<ProtectedRoute><KasPage /></ProtectedRoute>} />
+          <Route path="/database" element={<ProtectedRoute><DatabaseRumahPage /></ProtectedRoute>} />
           
           {/* Fallback jika URL tidak ditemukan */}
           <Route path="*" element={<Navigate to="/" replace />} />
