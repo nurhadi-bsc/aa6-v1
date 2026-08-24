@@ -40,10 +40,7 @@ export default function Navbar() {
                 Dashboard
               </Link>
               <Link to="/database" className="text-sm font-medium hover:text-amber-300 transition-colors hidden sm:inline-block">
-                Rumah
-              </Link>
-              <Link to="/warga" className="text-sm font-medium hover:text-amber-300 transition-colors hidden sm:inline-block">
-                Warga
+                Data Rumah & Warga
               </Link>
               <Link to="/kas" className="text-sm font-medium hover:text-amber-300 transition-colors hidden sm:inline-block">
                 Kas
@@ -51,13 +48,6 @@ export default function Navbar() {
               <Link to="/info-penting" className="text-sm font-medium hover:text-amber-300 transition-colors hidden sm:inline-block">
                 Info Penting
               </Link>
-
-              {/* Menu khusus Super Admin */}
-              {isSuperAdmin && (
-                <Link to="/add-house" className="text-sm font-medium text-amber-400 hover:text-amber-300 transition-colors hidden sm:inline-block">
-                  + Rumah
-                </Link>
-              )}
 
               {/* User Info & Logout */}
               <div className="flex items-center space-x-3 pl-2 border-l border-teal-700">
