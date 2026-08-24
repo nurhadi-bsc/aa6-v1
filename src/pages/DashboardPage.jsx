@@ -5,10 +5,11 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import Navbar from '../components/layout/Navbar';
 
+const TOTAL_HOUSES = 105;
+
 export default function DashboardPage() {
   const { userData } = useAuth();
-  const [houseCount, setHouseCount] = useState(0);
-  const [wargaCount, setWargaCount] = useState(0);
+  const [filledHouses, setFilledHouses] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const role = userData?.role || 'user';
@@ -18,12 +19,8 @@ export default function DashboardPage() {
   useEffect(() => {
     async function fetchCounts() {
       try {
-        const [housesSnap, usersSnap] = await Promise.all([
-          getDocs(collection(db, 'houses')),
-          getDocs(collection(db, 'users')),
-        ]);
-        setHouseCount(housesSnap.size);
-        setWargaCount(usersSnap.size);
+        const housesSnap = await getDocs(collection(db, 'houses'));
+        setFilledHouses(housesSnap.size);
       } catch (err) {
         console.error('Gagal mengambil data ringkasan:', err);
       } finally {
@@ -45,11 +42,11 @@ export default function DashboardPage() {
             Selamat datang, {userData?.name || 'Warga'}!
           </h1>
           <p className="text-sm text-slate-600">
-            Sistem informasi warga & database rumah Valencia Residence AA6.
+            Sistem informasi warga dan data rumah Valencia Residence AA6.
           </p>
           {role !== 'user' && (
             <span className="inline-block mt-2 text-xs font-semibold tracking-wide uppercase px-2.5 py-1 rounded-full bg-slate-900 text-white">
-              {isSuperAdmin ? 'Super Admin' : 'Pengurus / Admin'}
+              {isSuperAdmin ? 'Super Admin' : 'Pengurus'}
             </span>
           )}
         </div>
@@ -57,10 +54,13 @@ export default function DashboardPage() {
         {/* Statistik Ringkas — hanya Pengurus ke atas */}
         {isPengurus && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <StatCard label="Total Rumah" value={loading ? '...' : houseCount} />
-            <StatCard label="Total Warga" value={loading ? '...' : wargaCount} />
-            <StatCard label="Saldo Kas" value="—" hint="Belum terhubung" />
-            <StatCard label="Iuran Bulan Ini" value="—" hint="Belum terhubung" />
+            <StatCard
+              label="Rumah Terdata"
+              value={loading ? '...' : `${filledHouses}/${TOTAL_HOUSES}`}
+            />
+            <StatCard label="Saldo Kas IPL" value="—" hint="Belum terhubung" />
+            <StatCard label="Saldo Kas Lingkungan" value="—" hint="Belum terhubung" />
+            <StatCard label="Rumah Belum Terdata" value={loading ? '...' : TOTAL_HOUSES - filledHouses} />
           </div>
         )}
 
@@ -69,28 +69,22 @@ export default function DashboardPage() {
           <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
             Informasi Warga
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <MenuCard
               to="/database"
-              title="Database Rumah"
-              desc="Lihat data blok, nomor, dan status rumah."
-              badge={loading ? '' : `${houseCount} rumah`}
-            />
-            <MenuCard
-              to="/warga"
-              title="Daftar Warga"
-              desc="Nama dan nomor rumah warga terdaftar."
-              badge={loading ? '' : `${wargaCount} warga`}
+              title="Data Rumah & Warga"
+              desc="Lihat direktori rumah dan penghuni, atau perbarui data rumah Anda."
+              badge={loading ? '' : `${filledHouses}/${TOTAL_HOUSES} rumah`}
             />
             <MenuCard
               to="/kas"
-              title="Info Iuran / Kas"
-              desc="Saldo kas dan riwayat pemasukan-pengeluaran."
+              title="Informasi Iuran & Kas"
+              desc="Saldo dan riwayat transaksi Iuran IPL serta Kas Lingkungan."
             />
             <MenuCard
               to="/info-penting"
               title="Informasi Penting"
-              desc="Kontak satpam, PLN, PDAM, damkar, RS terdekat."
+              desc="Kontak satpam, PLN, PDAM, pemadam kebakaran, dan rumah sakit terdekat."
             />
           </div>
         </section>
@@ -101,11 +95,11 @@ export default function DashboardPage() {
             <h2 className="text-sm font-semibold text-amber-700 uppercase tracking-wide mb-3">
               Menu Pengurus
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <MenuCard
-                to="/warga?mode=kelola"
-                title="Kelola Data Warga"
-                desc="Edit, verifikasi, atau hapus data warga."
+                to="/database"
+                title="Kelola Data Rumah & Warga"
+                desc="Tinjau, perbarui, atau lengkapi data seluruh rumah."
                 tone="amber"
               />
 
@@ -113,33 +107,20 @@ export default function DashboardPage() {
               {isSuperAdmin && (
                 <>
                   <MenuCard
-                    to="/add-house"
-                    title="Kelola Data Rumah"
-                    desc="Tambah, edit, atau hapus data rumah."
-                    tone="amber"
-                  />
-                  <MenuCard
                     to="/kas?mode=kelola"
                     title="Kelola Kas / Iuran"
-                    desc="Input pemasukan, pengeluaran, dan status bayar."
+                    desc="Input pemasukan, pengeluaran, dan status pembayaran."
                     tone="amber"
                   />
                   <MenuCard
                     to="/info-penting?mode=kelola"
-                    title="Kelola Info Penting"
-                    desc="Ubah daftar kontak darurat & informasi lingkungan."
+                    title="Kelola Informasi Penting"
+                    desc="Perbarui daftar kontak darurat dan informasi lingkungan."
                     tone="amber"
                   />
                 </>
               )}
             </div>
-
-            {isSuperAdmin && (
-              <p className="text-xs text-slate-500 mt-3">
-                Sebagai Super Admin, kamu juga dapat mengelola role pengguna lain melalui menu
-                Kelola Data Warga.
-              </p>
-            )}
           </section>
         )}
 
