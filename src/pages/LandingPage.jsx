@@ -51,9 +51,9 @@ export default function LandingPage() {
 
         {/* Main Heading */}
         <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white leading-tight">
-          Gerbang Digital <br />
+          SIWARA <br />
           <span className="bg-gradient-to-r from-teal-400 to-emerald-300 bg-clip-text text-transparent">
-            Warga Valencia Residence AA6
+            Sistem Informasi Warga AA6 Valencia Residence
           </span>
         </h1>
         <p className="text-xs sm:text-sm text-slate-400 tracking-wide">
