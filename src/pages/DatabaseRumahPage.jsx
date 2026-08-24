@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   collection,
+  collectionGroup,
   doc,
   getDoc,
   getDocs,
@@ -19,6 +20,19 @@ import Navbar from '../components/layout/Navbar';
 
 const TOTAL_HOUSES = 105;
 const STATUS_OPTIONS = ['Pemilik Rumah', 'Kontrak/Sewa'];
+
+// Field yang tergolong PUBLIK (Tier 1) — boleh dilihat semua warga.
+const PUBLIC_FIELDS = ['residentName'];
+
+// Field yang tergolong data KONTAK (Tier 2) — hanya Pengurus/Super Admin.
+const DETAIL_FIELDS = [
+  'residentStatus',
+  'residentPhone',
+  'ownerName',
+  'ownerPhone',
+  'emergencyName',
+  'emergencyPhone',
+];
 
 function formatDate(ts) {
   if (!ts) return '-';
@@ -49,7 +63,7 @@ export default function DatabaseRumahPage() {
   const isPengurus = role === 'admin' || role === 'super_admin';
 
   const [view, setView] = useState('list'); // 'list' | 'form' | 'requests'
-  const [houses, setHouses] = useState({}); // { [houseNumber]: data }
+  const [houses, setHouses] = useState({}); // { [houseNumber]: { residentName, ...detail jika pengurus } }
   const [loadingList, setLoadingList] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -64,17 +78,15 @@ export default function DatabaseRumahPage() {
   const [pendingRequests, setPendingRequests] = useState([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
   const [processingId, setProcessingId] = useState(null);
-  const [wargaNotice, setWargaNotice] = useState(null); // { houseNumber } — notifikasi setelah warga berhasil submit
+  const [wargaNotice, setWargaNotice] = useState(null); // { houseNumber }
 
   const houseNumberOptions = useMemo(
     () => Array.from({ length: TOTAL_HOUSES }, (_, i) => i + 1),
     []
   );
 
-  // Nomor rumah yang sudah terhubung permanen dengan akun warga ini (diisi otomatis saat pengurus menyetujui pengajuan pertama).
   const linkedHouseNumber = !isPengurus ? userData?.houseNumber || null : null;
 
-  // Untuk warga yang belum terhubung ke rumah manapun: hanya rumah yang belum ada datanya yang boleh diklaim.
   const unclaimedHouseNumbers = useMemo(
     () => houseNumberOptions.filter((num) => !houses[num]),
     [houseNumberOptions, houses]
@@ -86,7 +98,6 @@ export default function DatabaseRumahPage() {
     ? [linkedHouseNumber]
     : unclaimedHouseNumbers;
 
-  // Warga dengan rumah terhubung: otomatis pilihkan nomor rumahnya begitu masuk mode form.
   useEffect(() => {
     if (view === 'form' && !isPengurus && linkedHouseNumber && selectedNumber !== linkedHouseNumber) {
       handleSelectNumber(linkedHouseNumber);
@@ -99,15 +110,28 @@ export default function DatabaseRumahPage() {
     if (isPengurus) fetchPendingRequests();
   }, []);
 
+  // Mengambil data Tier 1 (publik) untuk semua orang, ditambah Tier 2 (kontak) khusus Pengurus
+  // menggunakan collectionGroup agar tidak perlu 105x request individual.
   async function fetchAllHouses() {
     setLoadingList(true);
     try {
-      const q = query(collection(db, 'houses'), orderBy('houseNumber', 'asc'));
-      const snap = await getDocs(q);
+      const publicSnap = await getDocs(collection(db, 'houses'));
       const map = {};
-      snap.docs.forEach((d) => {
-        map[d.data().houseNumber] = { id: d.id, ...d.data() };
+      publicSnap.docs.forEach((d) => {
+        const data = d.data();
+        map[data.houseNumber] = { id: d.id, ...data };
       });
+
+      if (isPengurus) {
+        const detailSnap = await getDocs(collectionGroup(db, 'detail'));
+        detailSnap.docs.forEach((d) => {
+          const houseNum = Number(d.ref.parent.parent.id);
+          if (map[houseNum]) {
+            map[houseNum] = { ...map[houseNum], ...d.data() };
+          }
+        });
+      }
+
       setHouses(map);
     } catch (err) {
       console.error('Gagal memuat data rumah:', err);
@@ -119,13 +143,9 @@ export default function DatabaseRumahPage() {
   async function fetchPendingRequests() {
     setLoadingRequests(true);
     try {
-      const q = query(
-        collection(db, 'house_requests'),
-        where('status', '==', 'pending')
-      );
+      const q = query(collection(db, 'house_requests'), where('status', '==', 'pending'));
       const snap = await getDocs(q);
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      // Urutkan di sisi aplikasi (bukan di query) agar tidak memerlukan composite index Firestore.
       list.sort((a, b) => new Date(a.requestedAt) - new Date(b.requestedAt));
       setPendingRequests(list);
     } catch (err) {
@@ -136,6 +156,7 @@ export default function DatabaseRumahPage() {
     }
   }
 
+  // Mengambil data lengkap satu rumah (Tier 1 + Tier 2 jika Pengurus) saat form dibuka.
   async function handleSelectNumber(num) {
     setSelectedNumber(num);
     setForm(emptyForm);
@@ -145,21 +166,31 @@ export default function DatabaseRumahPage() {
 
     setLoadingForm(true);
     try {
-      const ref = doc(db, 'houses', String(num));
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const data = snap.data();
+      const publicRef = doc(db, 'houses', String(num));
+      const publicSnap = await getDoc(publicRef);
+
+      if (publicSnap.exists()) {
+        let combined = publicSnap.data();
+
+        if (isPengurus) {
+          const detailRef = doc(db, 'houses', String(num), 'detail', 'info');
+          const detailSnap = await getDoc(detailRef);
+          if (detailSnap.exists()) {
+            combined = { ...combined, ...detailSnap.data() };
+          }
+        }
+
         setForm({
-          residentName: data.residentName || '',
-          residentStatus: data.residentStatus || 'Pemilik Rumah',
-          residentPhone: data.residentPhone || '',
-          ownerName: data.ownerName || '',
-          ownerPhone: data.ownerPhone || '',
-          emergencyName: data.emergencyName || '',
-          emergencyPhone: data.emergencyPhone || '',
+          residentName: combined.residentName || '',
+          residentStatus: combined.residentStatus || 'Pemilik Rumah',
+          residentPhone: combined.residentPhone || '',
+          ownerName: combined.ownerName || '',
+          ownerPhone: combined.ownerPhone || '',
+          emergencyName: combined.emergencyName || '',
+          emergencyPhone: combined.emergencyPhone || '',
           changeNote: '',
         });
-        setExistingHistory(data.history || []);
+        setExistingHistory(combined.history || []);
         setHasExistingData(true);
       }
     } catch (err) {
@@ -200,6 +231,17 @@ export default function DatabaseRumahPage() {
     };
   }
 
+  // Memisahkan field gabungan menjadi Tier 1 (publik) dan Tier 2 (kontak).
+  function splitFields(fields) {
+    const publicPart = {};
+    const detailPart = {};
+    Object.entries(fields).forEach(([key, value]) => {
+      if (PUBLIC_FIELDS.includes(key)) publicPart[key] = value;
+      else if (DETAIL_FIELDS.includes(key)) detailPart[key] = value;
+    });
+    return { publicPart, detailPart };
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     const error = validate();
@@ -212,21 +254,27 @@ export default function DatabaseRumahPage() {
     try {
       const fields = buildFieldPayload();
       const isNew = existingHistory.length === 0;
+      const { publicPart, detailPart } = splitFields(fields);
 
       if (isPengurus) {
-        // Pengurus & Super Admin: perubahan langsung berlaku, tanpa perlu konfirmasi.
-        const ref = doc(db, 'houses', String(selectedNumber));
         const historyEntry = {
           date: new Date().toISOString(),
           note: form.changeNote.trim() || (isNew ? 'Data awal didaftarkan.' : 'Pembaruan data oleh pengurus.'),
           updatedBy: userData?.name || 'Tidak diketahui',
         };
 
+        // Tier 1: publik
         await setDoc(
-          ref,
+          doc(db, 'houses', String(selectedNumber)),
+          { houseNumber: selectedNumber, ...publicPart },
+          { merge: true }
+        );
+
+        // Tier 2: kontak (subcollection)
+        await setDoc(
+          doc(db, 'houses', String(selectedNumber), 'detail', 'info'),
           {
-            houseNumber: selectedNumber,
-            ...fields,
+            ...detailPart,
             updatedAt: new Date().toISOString(),
             updatedBy: userData?.name || 'Tidak diketahui',
             history: arrayUnion(historyEntry),
@@ -236,7 +284,8 @@ export default function DatabaseRumahPage() {
 
         alert('Data rumah berhasil disimpan.');
       } else {
-        // Warga: perubahan dikirim sebagai permintaan, menunggu konfirmasi pengurus.
+        // Warga: tetap dikirim sebagai satu pengajuan gabungan (house_requests sudah private,
+        // hanya bisa dibaca Pengurus, jadi tidak perlu dipisah tier di tahap pengajuan).
         await addDoc(collection(db, 'house_requests'), {
           houseNumber: selectedNumber,
           requestedData: fields,
@@ -264,7 +313,7 @@ export default function DatabaseRumahPage() {
   async function handleApprove(request) {
     setProcessingId(request.id);
     try {
-      const ref = doc(db, 'houses', String(request.houseNumber));
+      const { publicPart, detailPart } = splitFields(request.requestedData);
       const historyEntry = {
         date: new Date().toISOString(),
         note:
@@ -274,10 +323,15 @@ export default function DatabaseRumahPage() {
       };
 
       await setDoc(
-        ref,
+        doc(db, 'houses', String(request.houseNumber)),
+        { houseNumber: request.houseNumber, ...publicPart },
+        { merge: true }
+      );
+
+      await setDoc(
+        doc(db, 'houses', String(request.houseNumber), 'detail', 'info'),
         {
-          houseNumber: request.houseNumber,
-          ...request.requestedData,
+          ...detailPart,
           updatedAt: new Date().toISOString(),
           updatedBy: request.requestedBy,
           history: arrayUnion(historyEntry),
@@ -285,8 +339,6 @@ export default function DatabaseRumahPage() {
         { merge: true }
       );
 
-      // Kaitkan permanen akun warga dengan nomor rumah yang disetujui,
-      // agar warga tidak dapat mengajukan perubahan untuk rumah lain di masa mendatang.
       if (request.requestedByUid) {
         await setDoc(
           doc(db, 'users', request.requestedByUid),
@@ -342,7 +394,10 @@ export default function DatabaseRumahPage() {
 
     setDeleting(true);
     try {
+      // Hapus kedua tier: subcollection 'detail' dulu, baru dokumen utama.
+      await deleteDoc(doc(db, 'houses', String(selectedNumber), 'detail', 'info'));
       await deleteDoc(doc(db, 'houses', String(selectedNumber)));
+
       alert(`Data Rumah No. ${selectedNumber} berhasil dihapus.`);
       setSelectedNumber('');
       setForm(emptyForm);
