@@ -169,7 +169,7 @@ export default function KasPage() {
             {loading ? '...' : formatRupiah(dataByCategory.saldo)}
           </p>
           <p className="text-xs text-slate-500 mt-1">
-            Total akumulasi seluruh warga, belum dipecah per rumah.
+            Total akumulasi
           </p>
           <p className="text-[11px] text-slate-400 mt-2">
             Per tanggal {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
