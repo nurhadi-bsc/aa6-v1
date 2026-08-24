@@ -80,9 +80,16 @@ export default function LoginPage() {
 
         {/* Footer Link */}
         <div className="text-center text-sm text-slate-600 pt-2 border-t border-slate-100">
-          Belum punya akun?{' '}
+          Belum memiliki akun?{' '}
           <Link to="/register" className="text-teal-800 font-medium hover:underline">
-            Daftar User Baru
+            Daftar sebagai Warga Baru
+          </Link>
+        </div>
+
+        {/* Back to Home */}
+        <div className="text-center">
+          <Link to="/" className="text-xs text-slate-400 hover:text-teal-800 transition-colors">
+            ← Kembali ke Halaman Utama
           </Link>
         </div>
 

@@ -123,9 +123,16 @@ export default function RegisterPage() {
 
         {/* Footer Link */}
         <div className="text-center text-sm text-slate-600 pt-2 border-t border-slate-100">
-          Sudah punya akun?{' '}
+          Sudah memiliki akun?{' '}
           <Link to="/login" className="text-teal-800 font-medium hover:underline">
-            Masuk
+            Masuk di Sini
+          </Link>
+        </div>
+
+        {/* Back to Home */}
+        <div className="text-center">
+          <Link to="/" className="text-xs text-slate-400 hover:text-teal-800 transition-colors">
+            ← Kembali ke Halaman Utama
           </Link>
         </div>
 
