@@ -70,6 +70,29 @@ export default function DatabaseRumahPage() {
     []
   );
 
+  // Nomor rumah yang sudah terhubung permanen dengan akun warga ini (diisi otomatis saat pengurus menyetujui pengajuan pertama).
+  const linkedHouseNumber = !isPengurus ? userData?.houseNumber || null : null;
+
+  // Untuk warga yang belum terhubung ke rumah manapun: hanya rumah yang belum ada datanya yang boleh diklaim.
+  const unclaimedHouseNumbers = useMemo(
+    () => houseNumberOptions.filter((num) => !houses[num]),
+    [houseNumberOptions, houses]
+  );
+
+  const selectableHouseNumbers = isPengurus
+    ? houseNumberOptions
+    : linkedHouseNumber
+    ? [linkedHouseNumber]
+    : unclaimedHouseNumbers;
+
+  // Warga dengan rumah terhubung: otomatis pilihkan nomor rumahnya begitu masuk mode form.
+  useEffect(() => {
+    if (view === 'form' && !isPengurus && linkedHouseNumber && selectedNumber !== linkedHouseNumber) {
+      handleSelectNumber(linkedHouseNumber);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, linkedHouseNumber]);
+
   useEffect(() => {
     fetchAllHouses();
     if (isPengurus) fetchPendingRequests();
@@ -257,6 +280,16 @@ export default function DatabaseRumahPage() {
         },
         { merge: true }
       );
+
+      // Kaitkan permanen akun warga dengan nomor rumah yang disetujui,
+      // agar warga tidak dapat mengajukan perubahan untuk rumah lain di masa mendatang.
+      if (request.requestedByUid) {
+        await setDoc(
+          doc(db, 'users', request.requestedByUid),
+          { houseNumber: request.houseNumber },
+          { merge: true }
+        );
+      }
 
       await updateDoc(doc(db, 'house_requests', request.id), {
         status: 'approved',
@@ -461,23 +494,45 @@ export default function DatabaseRumahPage() {
               </div>
             )}
 
+            {!isPengurus && linkedHouseNumber && (
+              <div className="bg-slate-50 border border-slate-200 text-slate-600 text-xs px-4 py-2.5 rounded-lg">
+                Akun Anda telah terhubung dengan <strong>Rumah No. {linkedHouseNumber}</strong> dan hanya dapat
+                memperbarui data rumah tersebut. Jika Anda pindah rumah atau terdapat kekeliruan data, silakan
+                hubungi pengurus lingkungan.
+              </div>
+            )}
+
+            {!isPengurus && !linkedHouseNumber && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs px-4 py-2.5 rounded-lg">
+                Anda belum terhubung dengan rumah manapun. Pilih nomor rumah Anda dari daftar rumah yang belum
+                terdata di bawah ini untuk mendaftarkan data rumah Anda untuk pertama kali.
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Nomor Rumah <span className="text-red-500">*</span>
               </label>
               <select
                 required
+                disabled={!isPengurus && !!linkedHouseNumber}
                 value={selectedNumber}
                 onChange={(e) => handleSelectNumber(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-800 text-sm"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-800 text-sm disabled:bg-slate-100 disabled:text-slate-500"
               >
-                <option value="">Pilih nomor rumah (1–{TOTAL_HOUSES})</option>
-                {houseNumberOptions.map((num) => (
+                <option value="">Pilih nomor rumah</option>
+                {selectableHouseNumbers.map((num) => (
                   <option key={num} value={num}>
                     Rumah No. {num} {houses[num] ? '(sudah ada data)' : ''}
                   </option>
                 ))}
               </select>
+              {!isPengurus && !linkedHouseNumber && selectableHouseNumbers.length === 0 && (
+                <p className="text-[11px] text-red-500 mt-1">
+                  Seluruh {TOTAL_HOUSES} rumah sudah memiliki data terdaftar. Hubungi pengurus jika rumah Anda
+                  belum tercatat.
+                </p>
+              )}
             </div>
 
             {loadingForm && (
