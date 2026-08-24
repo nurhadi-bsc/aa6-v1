@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   collection,
-  collectionGroup,
   doc,
   getDoc,
   getDocs,
@@ -110,8 +109,9 @@ export default function DatabaseRumahPage() {
     if (isPengurus) fetchPendingRequests();
   }, []);
 
-  // Mengambil data Tier 1 (publik) untuk semua orang, ditambah Tier 2 (kontak) khusus Pengurus
-  // menggunakan collectionGroup agar tidak perlu 105x request individual.
+  // Mengambil data Tier 1 (publik) untuk semua orang, ditambah Tier 2 (kontak) khusus Pengurus.
+  // Detail diambil per-dokumen (bukan collectionGroup) agar tidak butuh index tambahan,
+  // dan hanya untuk rumah yang sudah terisi (bukan semua 105).
   async function fetchAllHouses() {
     setLoadingList(true);
     try {
@@ -122,17 +122,30 @@ export default function DatabaseRumahPage() {
         map[data.houseNumber] = { id: d.id, ...data };
       });
 
-      if (isPengurus) {
-        const detailSnap = await getDocs(collectionGroup(db, 'detail'));
-        detailSnap.docs.forEach((d) => {
-          const houseNum = Number(d.ref.parent.parent.id);
-          if (map[houseNum]) {
-            map[houseNum] = { ...map[houseNum], ...d.data() };
-          }
-        });
-      }
-
+      // Tampilkan dulu data publik segera, supaya tidak kosong seluruhnya
+      // kalau proses pengambilan detail di bawah ini gagal.
       setHouses(map);
+
+      if (isPengurus) {
+        const filledNumbers = Object.keys(map);
+        const detailResults = await Promise.all(
+          filledNumbers.map(async (num) => {
+            try {
+              const detailSnap = await getDoc(doc(db, 'houses', String(num), 'detail', 'info'));
+              return { num, data: detailSnap.exists() ? detailSnap.data() : null };
+            } catch (err) {
+              console.error(`Gagal memuat detail Rumah No. ${num}:`, err);
+              return { num, data: null };
+            }
+          })
+        );
+
+        const mergedMap = { ...map };
+        detailResults.forEach(({ num, data }) => {
+          if (data) mergedMap[num] = { ...mergedMap[num], ...data };
+        });
+        setHouses(mergedMap);
+      }
     } catch (err) {
       console.error('Gagal memuat data rumah:', err);
     } finally {
