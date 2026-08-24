@@ -166,6 +166,18 @@ export default function DashboardPage() {
         )}
 
       </main>
+
+      {/* Footer */}
+      <footer className="border-t border-slate-200 py-6 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <p className="text-xs text-slate-400 tracking-wide">
+            VALRES AA6 App v1 &copy; 2026 &mdash; Secure Residential Information System
+          </p>
+          <p className="text-[11px] text-slate-300 mt-1">
+            Designed by <span className="font-medium text-slate-400">enha</span>
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }
