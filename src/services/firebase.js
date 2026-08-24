@@ -4,12 +4,12 @@ import { getFirestore } from "firebase/firestore";
 
 // Konfigurasi Firebase langsung dimasukkan di sini
 const firebaseConfig = {
-  apiKey: "MASUKKAN_API_KEY_ANDA_DI_SINI",
-  authDomain: "MASUKKAN_AUTH_DOMAIN_ANDA_DI_SINI",
-  projectId: "MASUKKAN_PROJECT_ID_ANDA_DI_SINI",
-  storageBucket: "MASUKKAN_STORAGE_BUCKET_ANDA_DI_SINI",
-  messagingSenderId: "MASUKKAN_MESSAGING_SENDER_ID_ANDA_DI_SINI",
-  appId: "MASUKKAN_APP_ID_ANDA_DI_SINI"
+  apiKey: "AIzaSyBruKL_3zecF1v_vhL1LVbKw44zk8gJl-s",
+  authDomain: "valres-aa6.firebaseapp.com",
+  projectId: "valres-aa6",
+  storageBucket: "valres-aa6.firebasestorage.app",
+  messagingSenderId: "636562695269",
+  appId: "1:636562695269:web:6df53236c344212d72528c"
 };
 
 // Initialize Firebase
