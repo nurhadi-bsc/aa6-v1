@@ -7,6 +7,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   addDoc,
   arrayUnion,
   orderBy,
@@ -55,8 +56,10 @@ export default function DatabaseRumahPage() {
   const [selectedNumber, setSelectedNumber] = useState('');
   const [form, setForm] = useState(emptyForm);
   const [existingHistory, setExistingHistory] = useState([]);
+  const [hasExistingData, setHasExistingData] = useState(false);
   const [loadingForm, setLoadingForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [pendingRequests, setPendingRequests] = useState([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
@@ -110,6 +113,7 @@ export default function DatabaseRumahPage() {
     setSelectedNumber(num);
     setForm(emptyForm);
     setExistingHistory([]);
+    setHasExistingData(false);
     if (!num) return;
 
     setLoadingForm(true);
@@ -129,6 +133,7 @@ export default function DatabaseRumahPage() {
           changeNote: '',
         });
         setExistingHistory(data.history || []);
+        setHasExistingData(true);
       }
     } catch (err) {
       console.error('Gagal memuat data rumah terpilih:', err);
@@ -288,6 +293,31 @@ export default function DatabaseRumahPage() {
       alert('Gagal menolak permintaan. Silakan coba kembali.');
     } finally {
       setProcessingId(null);
+    }
+  }
+
+  async function handleDeleteHouse() {
+    if (!isPengurus || !selectedNumber) return;
+    const confirmed = window.confirm(
+      `Hapus seluruh data Rumah No. ${selectedNumber}?\n\nSeluruh data penghuni dan riwayat perubahan akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    try {
+      await deleteDoc(doc(db, 'houses', String(selectedNumber)));
+      alert(`Data Rumah No. ${selectedNumber} berhasil dihapus.`);
+      setSelectedNumber('');
+      setForm(emptyForm);
+      setExistingHistory([]);
+      setHasExistingData(false);
+      setView('list');
+      fetchAllHouses();
+    } catch (err) {
+      console.error('Gagal menghapus data rumah:', err);
+      alert('Gagal menghapus data. Silakan coba kembali.');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -607,7 +637,7 @@ export default function DatabaseRumahPage() {
                   </div>
                 )}
 
-                <div className="flex gap-3 pt-2">
+                <div className="flex flex-wrap items-center gap-3 pt-2">
                   <button
                     type="submit"
                     disabled={saving}
@@ -626,6 +656,17 @@ export default function DatabaseRumahPage() {
                   >
                     Batal
                   </button>
+
+                  {role === 'super_admin' && hasExistingData && (
+                    <button
+                      type="button"
+                      onClick={handleDeleteHouse}
+                      disabled={deleting}
+                      className="ml-auto text-red-600 hover:text-red-700 hover:bg-red-50 font-medium py-2.5 px-4 rounded-lg text-sm transition-colors disabled:opacity-50"
+                    >
+                      {deleting ? 'Menghapus...' : 'Hapus Data Rumah'}
+                    </button>
+                  )}
                 </div>
               </>
             )}
