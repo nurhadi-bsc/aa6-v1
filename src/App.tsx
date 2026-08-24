@@ -45,7 +45,7 @@ export default function App() {
           <Route path="/kas" element={<ProtectedRoute><KasPage /></ProtectedRoute>} />
           <Route path="/database" element={<ProtectedRoute><DatabaseRumahPage /></ProtectedRoute>} />
           <Route path="/info-penting" element={<ProtectedRoute><InfoPentingPage /></ProtectedRoute>} />
-          <Route path="/admin/migrate" element={<ProtectedRoute><MigrationPage /></ProtectedRoute>} />
+          <Route path="/migrasi-data" element={<ProtectedRoute><MigrationPage /></ProtectedRoute>} />
           
           {/* Fallback jika URL tidak ditemukan */}
           <Route path="*" element={<Navigate to="/" replace />} />
