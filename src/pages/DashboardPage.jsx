@@ -11,6 +11,7 @@ export default function DashboardPage() {
   const { userData } = useAuth();
   const [filledHouses, setFilledHouses] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
+  const [pendingAccountCount, setPendingAccountCount] = useState(0);
   const [saldoIPL, setSaldoIPL] = useState(0);
   const [saldoKas, setSaldoKas] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -44,6 +45,11 @@ export default function DashboardPage() {
             query(collection(db, 'house_requests'), where('status', '==', 'pending'))
           );
           setPendingCount(reqSnap.size);
+
+          const accSnap = await getDocs(
+            query(collection(db, 'users'), where('status', '==', 'pending'))
+          );
+          setPendingAccountCount(accSnap.size);
         }
       } catch (err) {
         console.error('Gagal mengambil data ringkasan:', err);
@@ -141,6 +147,13 @@ export default function DashboardPage() {
                 title="Kelola Data Rumah & Warga"
                 desc="Tinjau, perbarui, atau lengkapi data seluruh rumah."
                 badge={pendingCount > 0 ? `${pendingCount} menunggu konfirmasi` : undefined}
+                tone="amber"
+              />
+              <MenuCard
+                to="/verifikasi-akun"
+                title="Verifikasi Akun Warga"
+                desc="Setujui atau tolak pendaftaran akun warga baru."
+                badge={pendingAccountCount > 0 ? `${pendingAccountCount} menunggu` : undefined}
                 tone="amber"
               />
 
