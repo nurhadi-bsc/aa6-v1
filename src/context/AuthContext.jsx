@@ -28,6 +28,7 @@ export const AuthProvider = ({ children }) => {
       email: email,
       phone: phone || '',
       role: 'user', // Default role V1
+      status: 'pending', // Menunggu persetujuan Pengurus/Super Admin sebelum bisa akses aplikasi
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     };
