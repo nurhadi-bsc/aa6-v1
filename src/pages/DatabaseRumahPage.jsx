@@ -430,6 +430,51 @@ export default function DatabaseRumahPage() {
     }
   }
 
+  // Ekspor seluruh data rumah & warga (105 baris, termasuk yang belum terisi) ke file Excel.
+  // Library 'xlsx' di-load secara dinamis (hanya saat tombol ini diklik) agar tidak
+  // membebani ukuran bundle untuk semua pengguna yang tidak memakai fitur ini.
+  const [exporting, setExporting] = useState(false);
+
+  async function exportToExcel() {
+    setExporting(true);
+    try {
+      const XLSX = await import('xlsx');
+
+      const rows = houseNumberOptions.map((num) => {
+        const h = houses[num] || {};
+        return {
+          'No. Rumah': num,
+          'Nama Penghuni': h.residentName || '',
+          'Status Penghunian': h.residentStatus || 'Belum ada data',
+          'No. HP Penghuni': h.residentPhone || '',
+          'Nama Pemilik Rumah': h.ownerName || '',
+          'No. HP Pemilik Rumah': h.ownerPhone || '',
+          'Nama Kontak Darurat': h.emergencyName || '',
+          'No. HP Kontak Darurat': h.emergencyPhone || '',
+          'Terakhir Diperbarui': h.updatedAt ? formatDate(h.updatedAt) : '',
+          'Diperbarui Oleh': h.updatedBy || '',
+        };
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      worksheet['!cols'] = [
+        { wch: 10 }, { wch: 25 }, { wch: 20 }, { wch: 16 }, { wch: 25 },
+        { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 20 }, { wch: 20 },
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Data Rumah & Warga');
+
+      const today = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(workbook, `Data-Rumah-Warga-AA6-${today}.xlsx`);
+    } catch (err) {
+      console.error('Gagal mengekspor data ke Excel:', err);
+      alert('Gagal mengekspor data. Silakan coba kembali.');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const filledCount = Object.keys(houses).length;
 
   const filteredHouseNumbers = houseNumberOptions.filter((num) => {
@@ -515,17 +560,28 @@ export default function DatabaseRumahPage() {
               </div>
             )}
 
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <p className="text-xs text-slate-500">
                 {loadingList ? 'Memuat...' : `${filledCount} dari ${TOTAL_HOUSES} rumah telah memiliki data.`}
               </p>
-              <input
-                type="text"
-                placeholder="Cari nomor atau nama..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-800 w-52"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Cari nomor atau nama..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-800 w-full sm:w-52"
+                />
+                {isPengurus && (
+                  <button
+                    onClick={exportToExcel}
+                    disabled={loadingList || exporting}
+                    className="flex items-center gap-1.5 text-xs font-medium bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-2 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {exporting ? 'Menyiapkan...' : '⬇ Export Excel'}
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
