@@ -20,15 +20,31 @@ function formatDate(ts) {
   return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+const ROLE_LABELS = {
+  user: 'Warga',
+  admin: 'Pengurus',
+  super_admin: 'Super Admin',
+};
+
 export default function AccountApprovalPage() {
   const { userData } = useAuth();
   const role = userData?.role || 'user';
   const isPengurus = role === 'admin' || role === 'super_admin';
   const isSuperAdmin = role === 'super_admin';
 
-  const [pendingUsers, setPendingUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'approved' | 'rejected'
   const [processingId, setProcessingId] = useState(null);
+
+  const [pendingUsers, setPendingUsers] = useState([]);
+  const [loadingPending, setLoadingPending] = useState(true);
+
+  const [approvedUsers, setApprovedUsers] = useState([]);
+  const [loadingApproved, setLoadingApproved] = useState(false);
+  const [approvedLoaded, setApprovedLoaded] = useState(false);
+
+  const [rejectedUsers, setRejectedUsers] = useState([]);
+  const [loadingRejected, setLoadingRejected] = useState(false);
+  const [rejectedLoaded, setRejectedLoaded] = useState(false);
 
   const [accessCode, setAccessCode] = useState('');
   const [codeInput, setCodeInput] = useState('');
@@ -41,20 +57,51 @@ export default function AccountApprovalPage() {
     if (isSuperAdmin) fetchAccessCode();
   }, []);
 
+  // Ambil daftar akun sesuai tab yang dipilih, hanya dimuat sekali per tab (lazy-load)
+  // agar tidak boros pembacaan Firestore untuk data yang belum tentu dilihat.
+  useEffect(() => {
+    if (activeTab === 'approved' && !approvedLoaded) fetchUsersByStatus('approved');
+    if (activeTab === 'rejected' && !rejectedLoaded) fetchUsersByStatus('rejected');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  function sortByCreatedAt(list) {
+    return [...list].sort((a, b) => {
+      const aTime = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+      const bTime = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+      return bTime - aTime; // terbaru dulu
+    });
+  }
+
   async function fetchPendingUsers() {
-    setLoading(true);
+    setLoadingPending(true);
     try {
       const q = query(collection(db, 'users'), where('status', '==', 'pending'));
       const snap = await getDocs(q);
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      list.sort((a, b) => {
-        const aTime = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-        const bTime = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-        return aTime - bTime;
-      });
-      setPendingUsers(list);
+      setPendingUsers(sortByCreatedAt(list).reverse()); // pending: yang paling lama menunggu di atas
     } catch (err) {
       console.error('Gagal memuat daftar akun menunggu persetujuan:', err);
+      alert('Gagal memuat daftar akun. Periksa koneksi atau coba muat ulang halaman.');
+    } finally {
+      setLoadingPending(false);
+    }
+  }
+
+  async function fetchUsersByStatus(status) {
+    const setLoading = status === 'approved' ? setLoadingApproved : setLoadingRejected;
+    const setList = status === 'approved' ? setApprovedUsers : setRejectedUsers;
+    const setLoaded = status === 'approved' ? setApprovedLoaded : setRejectedLoaded;
+
+    setLoading(true);
+    try {
+      const q = query(collection(db, 'users'), where('status', '==', status));
+      const snap = await getDocs(q);
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setList(sortByCreatedAt(list));
+      setLoaded(true);
+    } catch (err) {
+      console.error(`Gagal memuat daftar akun berstatus ${status}:`, err);
       alert('Gagal memuat daftar akun. Periksa koneksi atau coba muat ulang halaman.');
     } finally {
       setLoading(false);
@@ -108,6 +155,13 @@ export default function AccountApprovalPage() {
         reviewedAt: new Date().toISOString(),
       });
       setPendingUsers((prev) => prev.filter((p) => p.id !== u.id));
+      // Perbarui juga daftar Disetujui kalau sudah pernah dimuat, supaya tetap sinkron.
+      if (approvedLoaded) {
+        setApprovedUsers((prev) => sortByCreatedAt([
+          { ...u, status: 'approved', reviewedBy: userData?.name, reviewedAt: new Date().toISOString() },
+          ...prev,
+        ]));
+      }
     } catch (err) {
       console.error('Gagal menyetujui akun:', err);
       alert('Gagal menyetujui akun. Silakan coba kembali.');
@@ -128,6 +182,12 @@ export default function AccountApprovalPage() {
         reviewedAt: new Date().toISOString(),
       });
       setPendingUsers((prev) => prev.filter((p) => p.id !== u.id));
+      if (rejectedLoaded) {
+        setRejectedUsers((prev) => sortByCreatedAt([
+          { ...u, status: 'rejected', reviewedBy: userData?.name, reviewedAt: new Date().toISOString() },
+          ...prev,
+        ]));
+      }
     } catch (err) {
       console.error('Gagal menolak akun:', err);
       alert('Gagal menolak akun. Silakan coba kembali.');
@@ -149,7 +209,7 @@ export default function AccountApprovalPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Verifikasi Akun Warga</h1>
           <p className="text-sm text-slate-600 mt-1">
-            Tinjau pendaftaran akun baru sebelum warga dapat mengakses aplikasi.
+            Tinjau pendaftaran akun warga, termasuk riwayat akun yang sudah disetujui maupun ditolak.
           </p>
         </div>
 
@@ -186,48 +246,154 @@ export default function AccountApprovalPage() {
           </div>
         )}
 
-        {/* Daftar Akun Pending */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <h2 className="font-semibold text-slate-900 text-sm">Akun Menunggu Persetujuan</h2>
-          </div>
+        {/* Tab Switcher */}
+        <div className="inline-flex bg-slate-200 rounded-lg p-1 flex-wrap">
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`relative px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'pending' ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-600'
+            }`}
+          >
+            Menunggu
+            {pendingUsers.length > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center text-[10px] font-bold bg-red-500 text-white rounded-full w-4 h-4">
+                {pendingUsers.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('approved')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'approved' ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-600'
+            }`}
+          >
+            Disetujui
+          </button>
+          <button
+            onClick={() => setActiveTab('rejected')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'rejected' ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-600'
+            }`}
+          >
+            Ditolak
+          </button>
+        </div>
 
-          {loading ? (
-            <p className="px-6 py-10 text-sm text-slate-400 text-center">Memuat data...</p>
-          ) : pendingUsers.length === 0 ? (
-            <p className="px-6 py-10 text-sm text-slate-400 text-center">
-              Tidak ada akun yang menunggu persetujuan saat ini.
-            </p>
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {pendingUsers.map((u) => (
-                <li key={u.id} className="px-4 sm:px-6 py-4 space-y-2">
-                  <div>
+        {/* ============ TAB: MENUNGGU ============ */}
+        {activeTab === 'pending' && (
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h2 className="font-semibold text-slate-900 text-sm">Akun Menunggu Persetujuan</h2>
+            </div>
+
+            {loadingPending ? (
+              <p className="px-6 py-10 text-sm text-slate-400 text-center">Memuat data...</p>
+            ) : pendingUsers.length === 0 ? (
+              <p className="px-6 py-10 text-sm text-slate-400 text-center">
+                Tidak ada akun yang menunggu persetujuan saat ini.
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {pendingUsers.map((u) => (
+                  <li key={u.id} className="px-4 sm:px-6 py-4 space-y-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{u.name}</p>
+                      <p className="text-xs text-slate-500">{u.email} {u.phone && `• ${u.phone}`}</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Daftar {formatDate(u.createdAt)}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleApprove(u)}
+                        disabled={processingId === u.id}
+                        className="text-xs font-medium bg-teal-800 hover:bg-teal-900 text-white px-4 py-1.5 rounded-lg disabled:opacity-50"
+                      >
+                        {processingId === u.id ? '...' : 'Setujui'}
+                      </button>
+                      <button
+                        onClick={() => handleReject(u)}
+                        disabled={processingId === u.id}
+                        className="text-xs font-medium bg-red-50 hover:bg-red-100 text-red-600 px-4 py-1.5 rounded-lg disabled:opacity-50"
+                      >
+                        Tolak
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* ============ TAB: DISETUJUI ============ */}
+        {activeTab === 'approved' && (
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h2 className="font-semibold text-slate-900 text-sm">Akun Disetujui</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Urut dari yang terbaru disetujui.</p>
+            </div>
+
+            {loadingApproved ? (
+              <p className="px-6 py-10 text-sm text-slate-400 text-center">Memuat data...</p>
+            ) : approvedUsers.length === 0 ? (
+              <p className="px-6 py-10 text-sm text-slate-400 text-center">
+                Belum ada akun yang disetujui.
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {approvedUsers.map((u) => (
+                  <li key={u.id} className="px-4 sm:px-6 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900 truncate">{u.name}</p>
+                        <p className="text-xs text-slate-500 truncate">{u.email} {u.phone && `• ${u.phone}`}</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Daftar {formatDate(u.createdAt)}
+                          {u.reviewedAt && ` • Disetujui ${formatDate(u.reviewedAt)}`}
+                          {u.reviewedBy && ` oleh ${u.reviewedBy}`}
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-medium bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full flex-shrink-0">
+                        {ROLE_LABELS[u.role] || u.role}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* ============ TAB: DITOLAK ============ */}
+        {activeTab === 'rejected' && (
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h2 className="font-semibold text-slate-900 text-sm">Akun Ditolak</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Urut dari yang terbaru ditolak.</p>
+            </div>
+
+            {loadingRejected ? (
+              <p className="px-6 py-10 text-sm text-slate-400 text-center">Memuat data...</p>
+            ) : rejectedUsers.length === 0 ? (
+              <p className="px-6 py-10 text-sm text-slate-400 text-center">
+                Belum ada akun yang ditolak.
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {rejectedUsers.map((u) => (
+                  <li key={u.id} className="px-4 sm:px-6 py-3">
                     <p className="text-sm font-semibold text-slate-900">{u.name}</p>
                     <p className="text-xs text-slate-500">{u.email} {u.phone && `• ${u.phone}`}</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Daftar {formatDate(u.createdAt)}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleApprove(u)}
-                      disabled={processingId === u.id}
-                      className="text-xs font-medium bg-teal-800 hover:bg-teal-900 text-white px-4 py-1.5 rounded-lg disabled:opacity-50"
-                    >
-                      {processingId === u.id ? '...' : 'Setujui'}
-                    </button>
-                    <button
-                      onClick={() => handleReject(u)}
-                      disabled={processingId === u.id}
-                      className="text-xs font-medium bg-red-50 hover:bg-red-100 text-red-600 px-4 py-1.5 rounded-lg disabled:opacity-50"
-                    >
-                      Tolak
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Daftar {formatDate(u.createdAt)}
+                      {u.reviewedAt && ` • Ditolak ${formatDate(u.reviewedAt)}`}
+                      {u.reviewedBy && ` oleh ${u.reviewedBy}`}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
       </main>
     </div>
