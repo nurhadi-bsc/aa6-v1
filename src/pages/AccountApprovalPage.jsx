@@ -51,6 +51,14 @@ export default function AccountApprovalPage() {
   const [savingCode, setSavingCode] = useState(false);
   const [loadingCode, setLoadingCode] = useState(true);
 
+  const [migrating, setMigrating] = useState(false);
+  const [migrationDone, setMigrationDone] = useState(false);
+  const [migrationLog, setMigrationLog] = useState([]);
+
+  const [migratingHouses, setMigratingHouses] = useState(false);
+  const [houseMigrationDone, setHouseMigrationDone] = useState(false);
+  const [houseMigrationLog, setHouseMigrationLog] = useState([]);
+
   useEffect(() => {
     if (!isPengurus) return;
     fetchPendingUsers();
@@ -143,6 +151,82 @@ export default function AccountApprovalPage() {
       alert('Gagal menyimpan kode akses.');
     } finally {
       setSavingCode(false);
+    }
+  }
+
+  // Migrasi sekali-jalan: akun yang didaftarkan SEBELUM fitur persetujuan ini ada
+  // tidak memiliki field 'status' sama sekali. Migrasi ini menandai mereka sebagai
+  // 'approved' (karena secara de facto sudah aktif & terpakai), agar muncul di riwayat.
+  async function runLegacyMigration() {
+    setMigrating(true);
+    setMigrationLog(['Memeriksa seluruh akun...']);
+    try {
+      const snap = await getDocs(collection(db, 'users'));
+      const legacyDocs = snap.docs.filter((d) => d.data().status === undefined);
+
+      setMigrationLog((prev) => [...prev, `Ditemukan ${legacyDocs.length} akun lama tanpa status.`]);
+
+      for (const d of legacyDocs) {
+        await updateDoc(doc(db, 'users', d.id), {
+          status: 'approved',
+          reviewedBy: 'Migrasi otomatis',
+          reviewedAt: new Date().toISOString(),
+        });
+        setMigrationLog((prev) => [...prev, `✓ ${d.data().name || d.id} ditandai sebagai disetujui.`]);
+      }
+
+      setMigrationLog((prev) => [...prev, 'Migrasi selesai.']);
+      setMigrationDone(true);
+
+      // Refresh data yang sedang tampil supaya langsung terlihat hasilnya.
+      fetchPendingUsers();
+      if (approvedLoaded) fetchUsersByStatus('approved');
+      if (rejectedLoaded) fetchUsersByStatus('rejected');
+    } catch (err) {
+      console.error('Gagal migrasi akun lama:', err);
+      setMigrationLog((prev) => [...prev, `✗ Terjadi kesalahan: ${err.message}`]);
+    } finally {
+      setMigrating(false);
+    }
+  }
+
+  // Migrasi sekali-jalan: akun yang didaftarkan sebelum fitur multi-rumah masih memakai
+  // field 'houseNumber' tunggal (kadang tersimpan tidak konsisten sebagai string).
+  // Migrasi ini menormalisasi ke 'houseNumbers' (array angka), agar dropdown klaim rumah
+  // tambahan bekerja dengan benar untuk akun lama.
+  async function runHouseNumberMigration() {
+    setMigratingHouses(true);
+    setHouseMigrationLog(['Memeriksa seluruh akun untuk field houseNumber lama...']);
+    try {
+      const snap = await getDocs(collection(db, 'users'));
+      const legacyDocs = snap.docs.filter((d) => {
+        const data = d.data();
+        return data.houseNumber !== undefined && data.houseNumbers === undefined;
+      });
+
+      setHouseMigrationLog((prev) => [...prev, `Ditemukan ${legacyDocs.length} akun dengan houseNumber lama.`]);
+
+      for (const d of legacyDocs) {
+        const data = d.data();
+        const normalizedNumber = Number(data.houseNumber);
+        await setDoc(
+          doc(db, 'users', d.id),
+          { houseNumbers: [normalizedNumber] },
+          { merge: true }
+        );
+        setHouseMigrationLog((prev) => [
+          ...prev,
+          `✓ ${data.name || d.id}: houseNumber ${JSON.stringify(data.houseNumber)} → houseNumbers [${normalizedNumber}]`,
+        ]);
+      }
+
+      setHouseMigrationLog((prev) => [...prev, 'Migrasi selesai.']);
+      setHouseMigrationDone(true);
+    } catch (err) {
+      console.error('Gagal migrasi houseNumber:', err);
+      setHouseMigrationLog((prev) => [...prev, `✗ Terjadi kesalahan: ${err.message}`]);
+    } finally {
+      setMigratingHouses(false);
     }
   }
 
@@ -242,6 +326,61 @@ export default function AccountApprovalPage() {
             )}
             {accessCode && (
               <p className="text-[11px] text-slate-400">Kode aktif saat ini: <strong>{accessCode}</strong></p>
+            )}
+          </div>
+        )}
+
+        {/* Panel Migrasi Akun Lama — khusus Super Admin, jalankan sekali saja */}
+        {isSuperAdmin && !migrationDone && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 space-y-3">
+            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
+              Migrasi Akun Lama (Sekali Jalan)
+            </p>
+            <p className="text-xs text-amber-700">
+              Akun yang didaftarkan sebelum fitur persetujuan ini ada belum memiliki status. Jalankan ini
+              satu kali agar akun-akun tersebut muncul di tab "Disetujui" pada riwayat di bawah.
+            </p>
+            <button
+              onClick={runLegacyMigration}
+              disabled={migrating}
+              className="text-xs font-medium bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg disabled:opacity-50"
+            >
+              {migrating ? 'Memproses...' : 'Jalankan Migrasi Akun Lama'}
+            </button>
+            {migrationLog.length > 0 && (
+              <div className="bg-slate-900 text-slate-100 rounded-lg p-3 text-[11px] font-mono max-h-40 overflow-y-auto space-y-0.5">
+                {migrationLog.map((line, i) => (
+                  <p key={i}>{line}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Panel Migrasi Nomor Rumah — khusus Super Admin, jalankan sekali saja */}
+        {isSuperAdmin && !houseMigrationDone && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 space-y-3">
+            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
+              Migrasi Nomor Rumah ke Format Multi-Rumah (Sekali Jalan)
+            </p>
+            <p className="text-xs text-amber-700">
+              Akun yang terhubung ke rumah sebelum fitur multi-rumah ada masih memakai format lama
+              (houseNumber tunggal). Jalankan ini satu kali agar akun tersebut bisa mengklaim rumah
+              tambahan dengan benar.
+            </p>
+            <button
+              onClick={runHouseNumberMigration}
+              disabled={migratingHouses}
+              className="text-xs font-medium bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg disabled:opacity-50"
+            >
+              {migratingHouses ? 'Memproses...' : 'Jalankan Migrasi Nomor Rumah'}
+            </button>
+            {houseMigrationLog.length > 0 && (
+              <div className="bg-slate-900 text-slate-100 rounded-lg p-3 text-[11px] font-mono max-h-40 overflow-y-auto space-y-0.5">
+                {houseMigrationLog.map((line, i) => (
+                  <p key={i}>{line}</p>
+                ))}
+              </div>
             )}
           </div>
         )}
