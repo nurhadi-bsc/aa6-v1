@@ -85,25 +85,17 @@ export default function DatabaseRumahPage() {
     []
   );
 
-  const linkedHouseNumber = !isPengurus ? userData?.houseNumber || null : null;
+  // Mendukung akun lama (houseNumber tunggal) maupun akun baru (houseNumbers array),
+  // agar warga bisa memiliki lebih dari satu rumah.
+  const myHouseNumbers = !isPengurus
+    ? (userData?.houseNumbers || (userData?.houseNumber ? [userData.houseNumber] : []))
+    : [];
 
-  const unclaimedHouseNumbers = useMemo(
-    () => houseNumberOptions.filter((num) => !houses[num]),
-    [houseNumberOptions, houses]
-  );
-
+  // Warga boleh memilih: rumah yang sudah menjadi miliknya (untuk diperbarui),
+  // ATAU rumah yang belum ada datanya sama sekali (untuk klaim rumah tambahan).
   const selectableHouseNumbers = isPengurus
     ? houseNumberOptions
-    : linkedHouseNumber
-    ? [linkedHouseNumber]
-    : unclaimedHouseNumbers;
-
-  useEffect(() => {
-    if (view === 'form' && !isPengurus && linkedHouseNumber && selectedNumber !== linkedHouseNumber) {
-      handleSelectNumber(linkedHouseNumber);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, linkedHouseNumber]);
+    : houseNumberOptions.filter((num) => myHouseNumbers.includes(num) || !houses[num]);
 
   useEffect(() => {
     fetchAllHouses();
@@ -357,9 +349,11 @@ export default function DatabaseRumahPage() {
       );
 
       if (request.requestedByUid) {
+        // Tambahkan nomor rumah ke daftar rumah milik warga (arrayUnion mencegah duplikat
+        // dan tidak menimpa rumah lain yang sudah dimiliki — mendukung warga multi-rumah).
         await setDoc(
           doc(db, 'users', request.requestedByUid),
-          { houseNumber: request.houseNumber },
+          { houseNumbers: arrayUnion(request.houseNumber) },
           { merge: true }
         );
       }
@@ -653,15 +647,15 @@ export default function DatabaseRumahPage() {
               </div>
             )}
 
-            {!isPengurus && linkedHouseNumber && (
+            {!isPengurus && myHouseNumbers.length > 0 && (
               <div className="bg-slate-50 border border-slate-200 text-slate-600 text-xs px-4 py-2.5 rounded-lg">
-                Akun Anda telah terhubung dengan <strong>Rumah No. {linkedHouseNumber}</strong> dan hanya dapat
-                memperbarui data rumah tersebut. Jika Anda pindah rumah atau terdapat kekeliruan data, silakan
-                hubungi pengurus lingkungan.
+                Rumah Anda: <strong>{myHouseNumbers.map((n) => `No. ${n}`).join(', ')}</strong>. Anda dapat
+                memperbarui data rumah tersebut, atau memilih nomor rumah lain yang belum terdata di bawah
+                untuk mendaftarkan rumah tambahan (jika Anda memiliki lebih dari satu rumah).
               </div>
             )}
 
-            {!isPengurus && !linkedHouseNumber && (
+            {!isPengurus && myHouseNumbers.length === 0 && (
               <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs px-4 py-2.5 rounded-lg">
                 Anda belum terhubung dengan rumah manapun. Pilih nomor rumah Anda dari daftar rumah yang belum
                 terdata di bawah ini untuk mendaftarkan data rumah Anda untuk pertama kali.
@@ -674,19 +668,18 @@ export default function DatabaseRumahPage() {
               </label>
               <select
                 required
-                disabled={!isPengurus && !!linkedHouseNumber}
                 value={selectedNumber}
                 onChange={(e) => handleSelectNumber(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-800 text-sm disabled:bg-slate-100 disabled:text-slate-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-800 text-sm"
               >
                 <option value="">Pilih nomor rumah</option>
                 {selectableHouseNumbers.map((num) => (
                   <option key={num} value={num}>
-                    Rumah No. {num} {houses[num] ? '(sudah ada data)' : ''}
+                    Rumah No. {num} {myHouseNumbers.includes(num) ? '(milik Anda)' : houses[num] ? '(sudah ada data)' : ''}
                   </option>
                 ))}
               </select>
-              {!isPengurus && !linkedHouseNumber && selectableHouseNumbers.length === 0 && (
+              {!isPengurus && selectableHouseNumbers.length === 0 && (
                 <p className="text-[11px] text-red-500 mt-1">
                   Seluruh {TOTAL_HOUSES} rumah sudah memiliki data terdaftar. Hubungi pengurus jika rumah Anda
                   belum tercatat.
