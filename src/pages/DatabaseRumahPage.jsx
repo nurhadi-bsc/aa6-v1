@@ -15,6 +15,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { sendMail, houseRequestApprovedEmail, houseRequestRejectedEmail } from '../utils/mail';
 import Navbar from '../components/layout/Navbar';
 
 const TOTAL_HOUSES = 105;
@@ -66,6 +67,7 @@ export default function DatabaseRumahPage() {
   const [houses, setHouses] = useState({}); // { [houseNumber]: { residentName, ...detail jika pengurus } }
   const [loadingList, setLoadingList] = useState(true);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'filled' | 'empty_status' | 'no_data'
 
   const [selectedNumber, setSelectedNumber] = useState('');
   const [form, setForm] = useState(emptyForm);
@@ -302,6 +304,7 @@ export default function DatabaseRumahPage() {
           isNewEntry: isNew,
           requestedBy: userData?.name || 'Tidak diketahui',
           requestedByUid: userData?.uid || null,
+          requestedByEmail: userData?.email || null,
           requestedAt: new Date().toISOString(),
           status: 'pending',
         });
@@ -366,6 +369,12 @@ export default function DatabaseRumahPage() {
 
       setPendingRequests((prev) => prev.filter((r) => r.id !== request.id));
       fetchAllHouses();
+
+      // Notifikasi email — kegagalan di sini tidak menggagalkan approval (lihat sendMail).
+      sendMail(
+        request.requestedByEmail,
+        houseRequestApprovedEmail(request.requestedBy, request.houseNumber)
+      );
     } catch (err) {
       console.error('Gagal mengkonfirmasi permintaan:', err);
       alert('Gagal mengkonfirmasi permintaan. Silakan coba kembali.');
@@ -388,6 +397,11 @@ export default function DatabaseRumahPage() {
         reviewedAt: new Date().toISOString(),
       });
       setPendingRequests((prev) => prev.filter((r) => r.id !== request.id));
+
+      sendMail(
+        request.requestedByEmail,
+        houseRequestRejectedEmail(request.requestedBy, request.houseNumber)
+      );
     } catch (err) {
       console.error('Gagal menolak permintaan:', err);
       alert('Gagal menolak permintaan. Silakan coba kembali.');
@@ -471,9 +485,30 @@ export default function DatabaseRumahPage() {
 
   const filledCount = Object.keys(houses).length;
 
+  // Hitung jumlah rumah per kategori status, untuk ditampilkan di chip filter.
+  const statusCounts = useMemo(() => {
+    let filled = 0;
+    let emptyStatus = 0;
+    let noData = 0;
+    houseNumberOptions.forEach((num) => {
+      const h = houses[num];
+      if (!h) noData++;
+      else if (h.residentStatus === 'Kosong (Tidak Dihuni)') emptyStatus++;
+      else filled++;
+    });
+    return { all: houseNumberOptions.length, filled, emptyStatus, noData };
+  }, [houses, houseNumberOptions]);
+
   const filteredHouseNumbers = houseNumberOptions.filter((num) => {
-    if (!search) return true;
     const h = houses[num];
+
+    // Filter status
+    if (statusFilter === 'filled' && (!h || h.residentStatus === 'Kosong (Tidak Dihuni)')) return false;
+    if (statusFilter === 'empty_status' && (!h || h.residentStatus !== 'Kosong (Tidak Dihuni)')) return false;
+    if (statusFilter === 'no_data' && h) return false;
+
+    // Filter pencarian
+    if (!search) return true;
     const term = search.toLowerCase();
     return (
       String(num).includes(term) ||
@@ -578,9 +613,35 @@ export default function DatabaseRumahPage() {
               </div>
             </div>
 
+            {/* Filter Status */}
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key: 'all', label: 'Semua', count: statusCounts.all },
+                { key: 'filled', label: 'Terisi', count: statusCounts.filled },
+                { key: 'empty_status', label: 'Kosong (Tidak Dihuni)', count: statusCounts.emptyStatus },
+                { key: 'no_data', label: 'Belum Terdata', count: statusCounts.noData },
+              ].map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setStatusFilter(f.key)}
+                  className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                    statusFilter === f.key
+                      ? 'bg-teal-800 text-white border-teal-800'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'
+                  }`}
+                >
+                  {f.label} ({f.count})
+                </button>
+              ))}
+            </div>
+
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
               {loadingList ? (
                 <p className="px-6 py-10 text-sm text-slate-400 text-center">Memuat data...</p>
+              ) : filteredHouseNumbers.length === 0 ? (
+                <p className="px-6 py-10 text-sm text-slate-400 text-center">
+                  Tidak ada rumah yang cocok dengan filter/pencarian saat ini.
+                </p>
               ) : (
                 <ul className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
                   {filteredHouseNumbers.map((num) => {
