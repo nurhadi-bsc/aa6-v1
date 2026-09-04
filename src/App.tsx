@@ -12,6 +12,7 @@ import DatabaseRumahPage from './pages/DatabaseRumahPage';
 import InfoPentingPage from './pages/InfoPentingPage';
 import PendingApprovalPage from './pages/PendingApprovalPage';
 import AccountApprovalPage from './pages/AccountApprovalPage';
+import IdleLogoutManager from './components/IdleLogoutManager';
 
 // Komponen Proteksi Halaman (Harus Login + Akun Disetujui)
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -49,6 +50,7 @@ export default function App() {
   return (
     <AuthProvider>
       <Router>
+        <IdleLogoutManager />
         <Routes>
           {/* Public / Guest Routes */}
           <Route path="/" element={<GuestRoute><LandingPage /></GuestRoute>} />
