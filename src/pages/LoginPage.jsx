@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
@@ -7,9 +7,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  
+
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isIdleLogout = searchParams.get('reason') === 'idle';
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -35,6 +37,13 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold text-slate-900">Masuk ke VALRES AA6</h1>
           <p className="text-sm text-slate-600">Silakan masukkan akun Anda</p>
         </div>
+
+        {/* Idle Logout Info */}
+        {isIdleLogout && !error && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-lg text-sm">
+            Anda telah logout otomatis karena tidak ada aktivitas. Silakan masuk kembali.
+          </div>
+        )}
 
         {/* Error Alert */}
         {error && (
